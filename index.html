@@ -64,6 +64,7 @@
       <button id="btnTree">B. Muat daftar dokumen</button>
       <button id="btnDenied" class="ghost">C. Coba buka modul di luar hak</button>
     </div>
+    <p class="kv" id="net">Status jaringan kantor: belum dicek</p>
     <p class="kv" id="perm"></p>
     <ul class="files" id="files"></ul>
     <pre id="content" hidden></pre>
@@ -102,8 +103,9 @@
   const server = () => $('server').value.trim().replace(/\/+$/, '');
   const token = () => $('token').value.trim();
 
+  const TIMEOUT_MS = 3000;
   function opts(withAuth) {
-    const o = { cache: 'no-store', headers: withAuth ? { Authorization: 'Bearer ' + token() } : {} };
+    const o = { cache: 'no-store', headers: withAuth ? { Authorization: 'Bearer ' + token() } : {}, signal: AbortSignal.timeout(TIMEOUT_MS) };
     if ($('tas').checked) o.targetAddressSpace = 'local';
     return o;
   }
@@ -117,6 +119,11 @@
       return { r, ms };
     } catch (err) {
       const ms = Math.round(performance.now() - t0);
+      if (err.name === 'TimeoutError') {
+        setNet(false);
+        note('gagal', step, `tidak ada jawaban dalam ${TIMEOUT_MS / 1000} detik (${ms} ms). Kemungkinan besar sedang di luar jaringan kantor: isi dokumen hanya bisa dibuka dari kantor.`);
+        return null;
+      }
       note('gagal', step, `${err.name}: ${err.message} (${ms} ms). Kemungkinan: sertifikat belum diterima, izin "akses jaringan lokal" ditolak, CORS, atau sedang di luar jaringan kantor.`);
       await showPermission();
       return null;
@@ -131,12 +138,29 @@
     $('perm').textContent = out.length ? 'Izin browser: ' + out.join(', ') : 'Izin jaringan lokal: tidak bisa dibaca di browser ini';
   }
 
+  function setNet(ok) {
+    $('net').innerHTML = ok
+      ? 'Status jaringan kantor: <span class="ok">terhubung</span>, isi dokumen bisa dibuka'
+      : 'Status jaringan kantor: <span class="warn">tidak terjangkau</span>, hanya status dan data pendukung yang tampil';
+  }
+  async function probe() {
+    if (!server()) return;
+    try {
+      const r = await fetch(server() + '/health', { cache: 'no-store', signal: AbortSignal.timeout(TIMEOUT_MS) });
+      setNet(r.ok);
+    } catch { setNet(false); }
+  }
+  window.addEventListener('online', probe);
+  window.addEventListener('offline', () => setNet(false));
+  if (navigator.connection) navigator.connection.addEventListener('change', probe);
+
   $('openServer').onclick = () => { if (server()) window.open(server() + '/health', '_blank', 'noopener'); };
 
   $('btnHealth').onclick = async () => {
     const x = await call('A. Cek koneksi', '/health', false);
     if (!x) return;
     note(x.r.ok ? 'ok' : 'gagal', 'A. Cek koneksi', `HTTP ${x.r.status} (${x.ms} ms)`);
+    setNet(x.r.ok);
     await showPermission();
   };
 
@@ -195,6 +219,7 @@
   };
   $('clear').onclick = () => { lines.length = 0; $('log').innerHTML = ''; };
   showPermission();
+  probe();
 })();
 </script>
 </body>
