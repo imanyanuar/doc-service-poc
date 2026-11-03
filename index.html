@@ -8,11 +8,11 @@
 <style>
   :root {
     --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5b6475; --line: #dde1e8;
-    --accent: #2457c5; --ok: #1d7a3a; --bad: #b3261e; --warn: #9a6400; --code: #f0f2f5;
+    --accent: #2457c5; --on-accent: #ffffff; --ok: #1d7a3a; --bad: #b3261e; --warn: #9a6400; --code: #f0f2f5;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #14171c; --card: #1d2128; --text: #e6e9ef; --muted: #9aa3b2; --line: #2e343e;
-      --accent: #7ea6ff; --ok: #5cc27a; --bad: #ff8a80; --warn: #e0b45a; --code: #262b33; }
+      --accent: #7ea6ff; --on-accent: #0f1a33; --ok: #5cc27a; --bad: #ff8a80; --warn: #e0b45a; --code: #262b33; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -25,7 +25,7 @@
   input[type=text], textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: 13px ui-monospace, Consolas, monospace; }
   textarea { min-height: 64px; resize: vertical; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
-  button { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font: inherit; font-size: 14px; cursor: pointer; }
+  button { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); font: inherit; font-size: 14px; cursor: pointer; }
   button.ghost { background: transparent; color: var(--accent); }
   button:disabled { opacity: .5; cursor: default; }
   .hint { font-size: 13px; color: var(--muted); }
