@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uji Layanan Dokumen</title>
+<meta name="robots" content="noindex">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5b6475; --line: #dde1e8;
+    --accent: #2457c5; --ok: #1d7a3a; --bad: #b3261e; --warn: #9a6400; --code: #f0f2f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14171c; --card: #1d2128; --text: #e6e9ef; --muted: #9aa3b2; --line: #2e343e;
+      --accent: #7ea6ff; --ok: #5cc27a; --bad: #ff8a80; --warn: #e0b45a; --code: #262b33; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 920px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: var(--muted); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 4px; }
+  input[type=text], textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: 13px ui-monospace, Consolas, monospace; }
+  textarea { min-height: 64px; resize: vertical; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+  button { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font: inherit; font-size: 14px; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .hint { font-size: 13px; color: var(--muted); }
+  ul.files { list-style: none; padding: 0; margin: 8px 0 0; }
+  ul.files li { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+  ul.files code { flex: 1; min-width: 200px; word-break: break-all; }
+  pre { background: var(--code); padding: 12px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 13px/1.5 ui-monospace, Consolas, monospace; max-height: 360px; overflow: auto; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+  #log div { padding: 4px 0; border-top: 1px solid var(--line); font-size: 13px; }
+  #log div:first-child { border-top: 0; }
+  .kv { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Uji Layanan Dokumen</h1>
+  <p class="sub">Halaman uji POC. Halaman ini online, sedangkan dokumennya ada di server kantor. Tidak ada isi dokumen, token, atau alamat server yang tersimpan di halaman ini.</p>
+
+  <section>
+    <h2>1. Alamat server dan token</h2>
+    <label for="server">Alamat layanan dokumen (dari jaringan kantor)</label>
+    <input id="server" type="text" placeholder="https://alamat-server:8791" autocomplete="off" spellcheck="false">
+    <label for="token">Token uji (dari Wangsit tiruan)</label>
+    <textarea id="token" placeholder="tempel token di sini" autocomplete="off" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="openServer" class="ghost">Buka alamat server di tab baru (terima sertifikat)</button>
+      <label class="hint"><input id="tas" type="checkbox"> kirim <code>targetAddressSpace: "local"</code></label>
+    </div>
+    <p class="hint">Sertifikat server POC dibuat sendiri. Buka alamat server sekali, pilih "Lanjutkan", lalu kembali ke sini.</p>
+  </section>
+
+  <section>
+    <h2>2. Uji</h2>
+    <div class="row">
+      <button id="btnHealth">A. Cek koneksi</button>
+      <button id="btnTree">B. Muat daftar dokumen</button>
+      <button id="btnDenied" class="ghost">C. Coba buka modul di luar hak</button>
+    </div>
+    <p class="kv" id="perm"></p>
+    <ul class="files" id="files"></ul>
+    <pre id="content" hidden></pre>
+  </section>
+
+  <section>
+    <h2>3. Catatan hasil</h2>
+    <div id="log"></div>
+    <div class="row">
+      <button id="copy" class="ghost">Salin catatan</button>
+      <button id="clear" class="ghost">Kosongkan</button>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k) { try { return sessionStorage.getItem(k) || ''; } catch { return ''; } },
+    set(k, v) { try { sessionStorage.setItem(k, v); } catch {} },
+  };
+  $('server').value = store.get('server');
+  $('token').value = store.get('token');
+  $('server').addEventListener('change', () => store.set('server', $('server').value.trim()));
+  $('token').addEventListener('change', () => store.set('token', $('token').value.trim()));
+
+  const lines = [];
+  function note(level, step, msg) {
+    const t = new Date().toLocaleTimeString('id-ID');
+    lines.push(`[${t}] ${step}: ${level.toUpperCase()} - ${msg}`);
+    const div = document.createElement('div');
+    div.innerHTML = `<span class="${level === 'ok' ? 'ok' : level === 'gagal' ? 'bad' : 'warn'}">${level.toUpperCase()}</span> <b>${step}</b> ${escapeHtml(msg)} <span class="kv">${t}</span>`;
+    $('log').prepend(div);
+  }
+  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const server = () => $('server').value.trim().replace(/\/+$/, '');
+  const token = () => $('token').value.trim();
+
+  function opts(withAuth) {
+    const o = { cache: 'no-store', headers: withAuth ? { Authorization: 'Bearer ' + token() } : {} };
+    if ($('tas').checked) o.targetAddressSpace = 'local';
+    return o;
+  }
+
+  async function call(step, p, withAuth) {
+    if (!server()) { note('gagal', step, 'alamat server belum diisi'); return null; }
+    const t0 = performance.now();
+    try {
+      const r = await fetch(server() + p, opts(withAuth));
+      const ms = Math.round(performance.now() - t0);
+      return { r, ms };
+    } catch (err) {
+      const ms = Math.round(performance.now() - t0);
+      note('gagal', step, `${err.name}: ${err.message} (${ms} ms). Kemungkinan: sertifikat belum diterima, izin "akses jaringan lokal" ditolak, CORS, atau sedang di luar jaringan kantor.`);
+      await showPermission();
+      return null;
+    }
+  }
+
+  async function showPermission() {
+    const out = [];
+    for (const name of ['local-network-access', 'local-network', 'loopback-network']) {
+      try { const s = await navigator.permissions.query({ name }); out.push(`${name}=${s.state}`); } catch { /* tidak dikenal browser ini */ }
+    }
+    $('perm').textContent = out.length ? 'Izin browser: ' + out.join(', ') : 'Izin jaringan lokal: tidak bisa dibaca di browser ini';
+  }
+
+  $('openServer').onclick = () => { if (server()) window.open(server() + '/health', '_blank', 'noopener'); };
+
+  $('btnHealth').onclick = async () => {
+    const x = await call('A. Cek koneksi', '/health', false);
+    if (!x) return;
+    note(x.r.ok ? 'ok' : 'gagal', 'A. Cek koneksi', `HTTP ${x.r.status} (${x.ms} ms)`);
+    await showPermission();
+  };
+
+  let lastTree = null;
+  $('btnTree').onclick = async () => {
+    const x = await call('B. Muat daftar', '/api/tree', true);
+    if (!x) return;
+    const body = await x.r.json().catch(() => ({}));
+    if (!x.r.ok) { note('gagal', 'B. Muat daftar', `HTTP ${x.r.status} ${body.error || ''} (${x.ms} ms)`); return; }
+    lastTree = body;
+    note('ok', 'B. Muat daftar', `${body.sub}: modul ${body.modules.join(', ')}; ${body.files.length} berkas (${x.ms} ms)`);
+    const ul = $('files');
+    ul.innerHTML = '';
+    for (const f of body.files) {
+      const li = document.createElement('li');
+      li.innerHTML = `<code>${escapeHtml(f)}</code>`;
+      const b1 = document.createElement('button'); b1.textContent = 'Tampilkan di sini'; b1.className = 'ghost';
+      b1.onclick = () => readFile(f);
+      const b2 = document.createElement('button'); b2.textContent = 'Buka di tab baru'; b2.className = 'ghost';
+      b2.onclick = () => openViewer(f);
+      li.append(b1, b2);
+      ul.append(li);
+    }
+  };
+
+  async function readFile(f, step = 'Baca berkas') {
+    const x = await call(step, '/api/file?path=' + encodeURIComponent(f), true);
+    if (!x) return;
+    const text = await x.r.text();
+    const pre = $('content');
+    if (!x.r.ok) {
+      note(x.r.status === 403 && step.startsWith('C.') ? 'ok' : 'gagal', step, `${f}: HTTP ${x.r.status} ${text.slice(0, 80)} (${x.ms} ms)`);
+      pre.hidden = true;
+      return;
+    }
+    note(step.startsWith('C.') ? 'gagal' : 'ok', step, `${f}: ${text.length} karakter (${x.ms} ms)`);
+    pre.hidden = false;
+    pre.textContent = text;
+  }
+
+  function openViewer(f) {
+    const url = server() + '/view#' + new URLSearchParams({ t: token(), p: f }).toString();
+    window.open(url, '_blank', 'noopener');
+    note('info', 'Tab baru', `membuka penampil server untuk ${f}`);
+  }
+
+  $('btnDenied').onclick = async () => {
+    const mine = lastTree ? new Set(lastTree.modules) : new Set();
+    const target = ['modul-a', 'modul-b', 'modul-c'].find((m) => !mine.has(m)) || 'modul-c';
+    await readFile(`${target}/PRD/prd-${target}.md`, 'C. Di luar hak');
+  };
+
+  $('copy').onclick = async () => {
+    const text = [`Browser: ${navigator.userAgent}`, `Halaman: ${location.origin}`, $('perm').textContent, ...lines].join('\n');
+    try { await navigator.clipboard.writeText(text); note('info', 'Salin', 'catatan disalin'); } catch { prompt('Salin manual:', text); }
+  };
+  $('clear').onclick = () => { lines.length = 0; $('log').innerHTML = ''; };
+  showPermission();
+})();
+</script>
+</body>
+</html>
